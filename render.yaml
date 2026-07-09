@@ -49,10 +49,14 @@ services:
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
     envVars:
+      # - key: VITE_API_BASE
+      #   value: https://cryptolens-api-qayj.onrender.com/api
+      # - key: VITE_WS_URL
+      #   value: wss://cryptolens-ws.onrender.com
       - key: VITE_API_BASE
-        value: https://cryptolens-api-qayj.onrender.com/api
+        value: https://cryptolens-api-r8w9.onrender.com
       - key: VITE_WS_URL
-        value: wss://cryptolens-ws.onrender.com
+        value: wss://cryptolens-ws-47uw.onrender.com
     routes:
       - type: rewrite
         source: /*
