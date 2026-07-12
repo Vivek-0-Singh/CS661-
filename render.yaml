@@ -1,0 +1,70 @@
+# Render Blueprint — deploys the backend API and the WebSocket relay.
+# The frontend is deployed separately on Vercel (see vercel.json / DEPLOY.md).
+#
+# Create both services at once: Render Dashboard → New → Blueprint → pick this repo.
+services:
+  # --- FastAPI REST API + DuckDB -------------------------------------------
+  # NOTE: `region` is immutable on an existing Render service. To apply it,
+  # delete the old Oregon services in the dashboard and re-sync this
+  # Blueprint (data is rebuilt from Binance at build time, nothing is lost).
+  - type: web
+    name: cryptolens-api
+    runtime: python
+    plan: free
+    region: singapore
+    rootDir: backend
+    # Data is baked into the deploy at build time so no external DB is needed.
+    # Full 5-year proposal range: 2020-01..2024-12, ~10.5M rows. Verified
+    # locally (12.8M rows across 5 assets, SOL starting at its Aug-2020
+    # listing). Build takes noticeably longer on the free plan — if it times
+    # out, fall back to a shorter range (e.g. "2023-01").
+    buildCommand: >-
+      pip install -r requirements.txt &&
+      python -m ingestion.download --start "$INGEST_START" --end "$INGEST_END"
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: INGEST_START
+        value: "2020-01"
+      - key: INGEST_END
+        value: "2024-12"
+      - key: CORS_ORIGINS
+        value: "*"
+
+  # --- Node WebSocket relay for the live order book ------------------------
+  # Must NOT run in a US region: Binance rejects WebSocket connections from
+  # US IPs (HTTP 451), which silently kills live mode. Singapore works and
+  # is closest to the demo audience.
+  - type: web
+    name: cryptolens-ws
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: ws-server
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+
+  # --- Frontend static site (Vite) -----------------------------------------
+  # Hosted on Render (not Vercel) so it's reachable on networks that can't
+  # route to Vercel's edge IPs. VITE_* vars are baked in at build time.
+  - type: web
+    name: cryptolens-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_API_BASE
+        value: https://cryptolens-api-5umm.onrender.com/api
+      - key: VITE_WS_URL
+        value: wss://cryptolens-ws-i1bj.onrender.com
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
